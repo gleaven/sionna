@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base href="./">
+    <title>6G R&amp;D // Sionna RT</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="static/css/sionna.css">
+
+    <!-- Three.js ES module imports -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+<body>
+
+<!-- ── Header Bar ──────────────────────────────────────────────── -->
+<header class="header-bar">
+    <div class="header-left">
+        <div class="header-logo">6G R&amp;D</div>
+        <div class="header-subtitle">NVIDIA SIONNA RT</div>
+    </div>
+    <div class="header-center">
+        <div class="status-indicator" id="status-indicator">
+            <span class="status-dot"></span>
+            <span class="status-text">INITIALIZING</span>
+        </div>
+    </div>
+    <div class="header-right">
+        <select id="scene-select" class="scene-select" onchange="switchScene(this.value)">
+            <option value="munich">MUNICH</option>
+            <option value="etoile">ETOILE</option>
+            <option value="simple_street_canyon">STREET CANYON</option>
+        </select>
+        <label class="depth-label">DEPTH</label>
+        <select id="max-depth" class="scene-select">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="5">5</option>
+            <option value="8">8</option>
+        </select>
+        <button class="btn-action btn-place-tx" onclick="setPlacementMode('tx')">+ TX</button>
+        <button class="btn-action btn-place-rx" onclick="setPlacementMode('rx')">+ RX</button>
+        <button class="btn-action btn-compute" onclick="computeAll()">COMPUTE</button>
+        <button class="btn-action btn-save" onclick="saveConfigPrompt()">SAVE</button>
+        <div class="config-dropdown" id="config-dropdown">
+            <button class="btn-action btn-load" onclick="toggleConfigMenu()">CONFIGS &#x25BC;</button>
+            <div class="config-menu" id="config-menu"></div>
+        </div>
+        <a href="/notebooks/" target="_blank" class="btn-action btn-notebooks">NOTEBOOKS</a>
+    </div>
+</header>
+
+<!-- ── Compute Progress Bar ──────────────────────────────────────── -->
+<div class="compute-progress" id="compute-progress">
+    <div class="compute-progress-inner">
+        <span class="compute-progress-label" id="progress-label">READY</span>
+        <div class="compute-progress-bar">
+            <div class="compute-progress-fill" id="progress-fill" style="width: 0%"></div>
+        </div>
+        <span class="compute-progress-time" id="progress-time"></span>
+    </div>
+</div>
+
+<!-- ── Main 4-Panel Grid ───────────────────────────────────────── -->
+<main class="panel-grid">
+
+    <!-- Resize handles -->
+    <div class="col-resize-handle" id="col-resize-handle"></div>
+    <div class="row-resize-handle" id="row-resize-handle"></div>
+
+    <!-- Panel 1: 3D Scene Viewer -->
+    <section class="panel" id="panel-3d">
+        <div class="panel-header">
+            <span class="panel-tag">01</span>
+            <span class="panel-title">3D DIGITAL TWIN</span>
+            <span class="panel-badge" id="obj-count">&mdash;</span>
+        </div>
+        <div class="panel-body" id="three-container"></div>
+    </section>
+
+    <!-- Panel 2: Radio Coverage Map -->
+    <section class="panel" id="panel-coverage">
+        <div class="panel-header">
+            <span class="panel-tag">02</span>
+            <span class="panel-title">RADIO COVERAGE</span>
+            <span class="panel-badge" id="coverage-time">&mdash;</span>
+        </div>
+        <div class="panel-body" id="coverage-container">
+            <div class="panel-placeholder" id="coverage-placeholder">
+                Place towers with <strong>+ TX</strong> / <strong>+ RX</strong> then click <strong>COMPUTE</strong>
+            </div>
+            <img id="coverage-img" class="coverage-img" style="display:none" alt="Coverage Map">
+        </div>
+    </section>
+
+    <!-- Panel 3: Path Analysis (real ray tracing results) -->
+    <section class="panel" id="panel-paths">
+        <div class="panel-header">
+            <span class="panel-tag">03</span>
+            <span class="panel-title">PATH ANALYSIS</span>
+            <span class="panel-badge" id="path-count">&mdash;</span>
+            <button class="panel-collapse-btn" onclick="togglePanel('panel-paths')">&#x25BC;</button>
+        </div>
+        <div class="panel-body panel-scroll" id="path-container">
+            <div class="panel-placeholder">
+                Click <strong>COMPUTE</strong> to analyze propagation paths
+            </div>
+        </div>
+    </section>
+
+    <!-- Panel 4: Link Budget (real computation from Sionna data) -->
+    <section class="panel" id="panel-link">
+        <div class="panel-header">
+            <span class="panel-tag">04</span>
+            <span class="panel-title">LINK BUDGET</span>
+            <span class="panel-badge" id="link-badge">&mdash;</span>
+            <button class="panel-collapse-btn" onclick="togglePanel('panel-link')">&#x25BC;</button>
+        </div>
+        <div class="panel-body panel-scroll" id="link-container">
+            <div class="panel-placeholder">
+                Click <strong>COMPUTE</strong> for link budget from real propagation data
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<!-- ── Tower Properties Sidebar ──────────────────────────────────── -->
+<div id="tower-sidebar" class="tower-sidebar">
+    <div class="sidebar-header">
+        <span class="sidebar-title" id="sidebar-title">DEVICE</span>
+        <button class="sidebar-close" onclick="deselectDevice()">&times;</button>
+    </div>
+    <div class="sidebar-body">
+        <div class="sidebar-field">
+            <label>TYPE</label>
+            <span class="sidebar-badge" id="sidebar-type">TX</span>
+        </div>
+        <div class="sidebar-field">
+            <label>NAME</label>
+            <span class="sidebar-value" id="sidebar-name">&mdash;</span>
+        </div>
+        <div class="sidebar-field">
+            <label>X (SIONNA)</label>
+            <input type="number" id="sidebar-x" step="1" onchange="onSidebarPositionChange()">
+        </div>
+        <div class="sidebar-field">
+            <label>Y (SIONNA)</label>
+            <input type="number" id="sidebar-y" step="1" onchange="onSidebarPositionChange()">
+        </div>
+        <div class="sidebar-field">
+            <label>Z (HEIGHT)</label>
+            <input type="number" id="sidebar-z" step="0.5" onchange="onSidebarPositionChange()">
+        </div>
+        <div class="sidebar-field">
+            <label>ABOVE SURFACE</label>
+            <span class="sidebar-value" id="sidebar-height">&mdash;</span>
+        </div>
+        <div class="sidebar-actions">
+            <button class="btn-sidebar btn-sidebar-move" onclick="enterMoveMode()">MOVE</button>
+            <button class="btn-sidebar btn-sidebar-delete" onclick="deleteSelectedDevice()">DELETE</button>
+        </div>
+        <div class="sidebar-actions">
+            <button class="btn-sidebar btn-sidebar-recompute" onclick="computeAll()">RECOMPUTE</button>
+        </div>
+        <div class="sidebar-hint">
+            <kbd>M</kbd> Move &nbsp; <kbd>Del</kbd> Delete &nbsp; <kbd>Esc</kbd> Deselect
+        </div>
+    </div>
+</div>
+
+<!-- ── Bottom Bar ──────────────────────────────────────────────── -->
+<footer class="bottom-bar">
+    <div class="bottom-left">
+        <span class="bottom-label">BACKEND</span>
+        <span class="bottom-value" id="backend-variant">&mdash;</span>
+    </div>
+    <div class="bottom-center">
+        <span class="bottom-label">COMPUTE</span>
+        <span class="bottom-value" id="compute-backend">LLVM JIT (Sionna RT)</span>
+    </div>
+    <div class="bottom-right">
+        <span class="bottom-label">PLATFORM</span>
+        <span class="bottom-value">DELL PRO MAX GB10 / SM_121</span>
+    </div>
+</footer>
+
+<script type="module" src="static/js/twin-viewer.js"></script>
+<script src="static/js/path-analysis.js"></script>
+<script src="static/js/link-budget.js"></script>
+<script type="module">
+    document.addEventListener('DOMContentLoaded', () => {
+        initLinkBudget();
+        initTwinViewer();
+        initResizeHandles();
+        checkBackendStatus();
+    });
+
+    async function checkBackendStatus() {
+        try {
+            const res = await fetch('health');
+            const data = await res.json();
+            const dot = document.querySelector('.status-dot');
+            const text = document.querySelector('.status-text');
+            const backend = document.getElementById('backend-variant');
+            if (data.scene_loaded) {
+                dot.classList.add('online');
+                text.textContent = `SCENE: ${(data.scene_name || 'LOADED').toUpperCase()}`;
+                backend.textContent = `Sionna RT — ${data.scene_name || 'ready'}`;
+                loadSceneGeometry();
+            } else if (data.sionna_ready) {
+                dot.classList.add('warning');
+                text.textContent = 'SIONNA READY (NO SCENE)';
+                backend.textContent = 'Sionna RT (no scene)';
+            } else {
+                text.textContent = 'LOADING SIONNA RT...';
+                backend.textContent = 'Initializing...';
+                setTimeout(checkBackendStatus, 3000);
+            }
+        } catch {
+            setTimeout(checkBackendStatus, 5000);
+        }
+    }
+
+    // ── Configuration save/load ──
+    window.saveConfigPrompt = async function() {
+        const name = prompt('Configuration name:');
+        if (!name || !name.trim()) return;
+        const safeName = name.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+        try {
+            const res = await fetch(`api/configs/${safeName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    description: `Saved at ${new Date().toLocaleString()}`,
+                    link_params: typeof linkParams !== 'undefined' ? linkParams : {},
+                }),
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                showToast(`Saved: ${safeName} (${data.device_count} devices)`);
+            }
+        } catch (e) {
+            showToast('Save failed: ' + e.message);
+        }
+    };
+
+    window.toggleConfigMenu = async function() {
+        const menu = document.getElementById('config-menu');
+        if (menu.classList.contains('open')) {
+            menu.classList.remove('open');
+            return;
+        }
+        try {
+            const res = await fetch('api/configs');
+            const data = await res.json();
+            if (data.configs.length === 0) {
+                menu.innerHTML = '<div class="config-empty">No saved configurations</div>';
+            } else {
+                menu.innerHTML = data.configs.map(c => `
+                    <div class="config-item">
+                        <div class="config-item-info" onclick="loadConfig('${c.name}')">
+                            <span class="config-item-name">${c.name}</span>
+                            <span class="config-item-meta">${c.scene} &mdash; ${c.device_count} devices</span>
+                            <span class="config-item-time">${c.saved_at || ''}</span>
+                        </div>
+                        <button class="config-item-del" onclick="event.stopPropagation(); deleteConfig('${c.name}')">&times;</button>
+                    </div>
+                `).join('');
+            }
+            menu.classList.add('open');
+        } catch (e) {
+            menu.innerHTML = '<div class="config-empty">Failed to load configs</div>';
+            menu.classList.add('open');
+        }
+    };
+
+    window.loadConfig = async function(name) {
+        document.getElementById('config-menu').classList.remove('open');
+        const dot = document.querySelector('.status-dot');
+        const text = document.querySelector('.status-text');
+        dot.classList.remove('online', 'warning');
+        text.textContent = `LOADING CONFIG: ${name.toUpperCase()}...`;
+        try {
+            const res = await fetch(`api/configs/${name}/load`, { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                // Update scene dropdown
+                const sel = document.getElementById('scene-select');
+                if (sel) sel.value = data.scene;
+
+                // Restore link budget params if saved
+                if (data.link_params && typeof onFreqChange === 'function') {
+                    const lp = data.link_params;
+                    if (lp.fc_ghz) onFreqChange(String(lp.fc_ghz));
+                }
+
+                dot.classList.add('online');
+                text.textContent = `SCENE: ${data.scene.toUpperCase()}`;
+                loadSceneGeometry();
+                showToast(`Loaded: ${name}`);
+                setTimeout(() => computeAll(), 500);
+            } else {
+                dot.classList.add('warning');
+                text.textContent = `LOAD FAILED: ${data.error}`;
+            }
+        } catch (e) {
+            dot.classList.add('warning');
+            text.textContent = 'CONFIG LOAD FAILED';
+        }
+    };
+
+    window.deleteConfig = async function(name) {
+        if (!confirm(`Delete configuration "${name}"?`)) return;
+        try {
+            await fetch(`api/configs/${name}`, { method: 'DELETE' });
+            toggleConfigMenu(); // refresh the list
+        } catch (e) {
+            showToast('Delete failed');
+        }
+    };
+
+    window.showToast = function(msg) {
+        let toast = document.getElementById('toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'toast';
+            toast.className = 'toast';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2500);
+    };
+
+    // Close config menu on outside click
+    document.addEventListener('click', (e) => {
+        const dd = document.getElementById('config-dropdown');
+        if (dd && !dd.contains(e.target)) {
+            document.getElementById('config-menu').classList.remove('open');
+        }
+    });
+
+    window.switchScene = async function(name) {
+        const dot = document.querySelector('.status-dot');
+        const text = document.querySelector('.status-text');
+        dot.classList.remove('online', 'warning');
+        text.textContent = `LOADING ${name.toUpperCase()}...`;
+
+        // Clear existing state
+        deselectDevice();
+        const covImg = document.getElementById('coverage-img');
+        const covPh = document.getElementById('coverage-placeholder');
+        if (covImg) { covImg.style.display = 'none'; covImg.src = ''; }
+        if (covPh) covPh.style.display = '';
+        document.getElementById('path-container').innerHTML =
+            '<div class="panel-placeholder">Click <strong>COMPUTE</strong> to analyze propagation paths</div>';
+        document.getElementById('path-count').textContent = '\u2014';
+        document.getElementById('link-badge').textContent = '\u2014';
+        document.getElementById('coverage-time').textContent = '\u2014';
+        initLinkBudget();
+
+        try {
+            const res = await fetch(`api/scene/${name}`, { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                dot.classList.add('online');
+                text.textContent = `SCENE: ${name.toUpperCase()}`;
+                loadSceneGeometry();
+                // Auto-compute coverage for new scene
+                setTimeout(() => computeAll(), 500);
+            } else {
+                dot.classList.add('warning');
+                text.textContent = `ERROR: ${data.error}`;
+            }
+        } catch (e) {
+            dot.classList.add('warning');
+            text.textContent = 'LOAD FAILED';
+        }
+    };
+</script>
+
+    <script src="/shared/demo-guide.js" data-demo-id="sionna"></script>
+</body>
+</html>

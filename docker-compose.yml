@@ -1,0 +1,51 @@
+services:
+  sionna:
+    build: .
+    image: demo-sionna:latest
+    container_name: demo-sionna
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:8080"
+      - "${JUPYTER_PORT:-8888}:8888"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - DRJIT_LIBLLVM_PATH=/usr/lib/aarch64-linux-gnu/libLLVM-14.so
+      - DRJIT_NTHREADS=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+        limits:
+          memory: 8G
+    volumes:
+      - sionna-data:/app/data
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+
+  # Optional HTTPS reverse proxy (--profile proxy).
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["proxy"]
+    container_name: sionna-caddy
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8081}:80"
+      - "${HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - sionna-caddy-data:/data
+      - sionna-caddy-config:/config
+    depends_on:
+      - sionna
+
+volumes:
+  sionna-data:
+  sionna-caddy-data:
+  sionna-caddy-config:
