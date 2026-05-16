@@ -553,3 +553,27 @@ RT (<https://nvlabs.github.io/sionna/>) — the upstream project does
 all of the actual ray tracing, link-level, and system-level
 simulation; this demo just packages it for one-command local use with
 a 3D UI.
+
+## Components & Licensing
+
+This demo is released under Apache License 2.0. It bundles or wraps
+the following third-party components, each retaining its own license:
+
+| Component | License | Use in this demo |
+|---|---|---|
+| [**NVIDIA Sionna RT** 1.2.1](https://github.com/NVlabs/sionna-rt) | Apache 2.0 | GPU ray tracer (`PathSolver`, `RadioMapSolver`) — the core of the demo |
+| [**NVIDIA Sionna PHY**](https://github.com/NVlabs/sionna) | Apache 2.0 | 5G NR PHY notebooks (PUSCH, LDPC, MIMO/OFDM, neural receivers) |
+| [**NVIDIA Sionna SYS**](https://github.com/NVlabs/sionna) | Apache 2.0 | System-level notebooks (link adaptation, scheduling, power control, PHY abstraction) |
+| Bundled Sionna sample scenes (`munich`, `etoile`, `simple_street_canyon`, `simple_wedge`, `box`, `floor_wall`) | Apache 2.0 (shipped with Sionna RT) | 3D scenes for ray tracing |
+| [Mitsuba 3](https://github.com/mitsuba-renderer/mitsuba3) 3.7.1 (built from source for aarch64) | BSD-3 | Scene + rendering backend that Sionna RT runs on |
+| [Dr.Jit](https://github.com/mitsuba-renderer/drjit) 1.2.0 (built from source for aarch64) | BSD-3 | JIT autodiff used by Mitsuba / Sionna RT |
+| LLVM 14 (host shared library) | Apache 2.0 with LLVM Exception | Dr.Jit's LLVM backend (used in place of OptiX on `sm_121`) |
+| [JupyterLab](https://github.com/jupyterlab/jupyterlab) | BSD-3 | Notebook environment proxied at `/sionna/notebooks/lab` |
+| [Three.js](https://github.com/mrdoob/three.js/) (bundled in `static/`) | MIT | 3D digital-twin viewer |
+| [FastAPI](https://github.com/fastapi/fastapi) | MIT | HTTP server + Jupyter reverse proxy |
+| [NVIDIA CUDA base image](https://hub.docker.com/r/nvidia/cuda) | NVIDIA Deep Learning Container Software License | GPU runtime |
+| [Caddy](https://github.com/caddyserver/caddy) (optional `--profile proxy`) | Apache 2.0 | HTTPS termination |
+
+All bundled dependencies are under permissive licenses. The NVIDIA
+CUDA base image is governed by NVIDIA's Deep Learning Container
+Software License — read it before redistributing the built image.
